@@ -1,0 +1,360 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        .legend {
+            font-family: montserrat;
+            font-size: 7px;
+        }
+
+        .legend rect {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: #4e4e4e;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            opacity: 0;
+        }
+
+        h1 {
+        text-align: center;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        color: white;
+        font-size: 40px;
+        padding-bottom: 2%;
+        }
+
+        p {
+        text-align: center;
+        font-family: Arial, Helvetica, sans-serif;
+        color:white
+        }
+        
+        h3 {
+        text-align: center;
+        font-family: Arial, Helvetica, sans-serif;
+        color: white;
+        }
+        body{
+            background-color: #8e9faf;
+        } 
+
+    </style>
+</head>
+
+<body>
+    <H1>Singapore population choropleth in 2023 </H1>
+   
+    <br>
+
+    <svg id="map-svg"></svg>
+
+
+    <svg id="legend" class="legend"></svg>
+
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <script>
+        let check = 0;
+        window.onload = function () {
+            RunSvg();
+        };
+
+
+        function population() {
+            check = 0;
+            RunSvg();
+        }
+
+        function density() {
+            check = 1;
+            RunSvg();
+        }
+
+        function getValueFromHTML(htmlString, fieldName) {
+            // Create a temporary div element to parse HTML content
+            let tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlString;
+
+            // Find the table row containing the fieldName
+            let rows = tempDiv.getElementsByTagName('tr');
+            for (let row of rows) {
+                let cells = row.getElementsByTagName('td');
+                if (cells.length >= 2 && cells[0].textContent.trim() === fieldName) {
+                    // Return the value associated with the fieldName
+                    return cells[1].textContent.trim();
+                }
+            }
+            return null; // Return null if fieldName not found
+        }
+
+        function getColor(value) {
+            // Define color scale domain and range
+            let colorScale = d3.scaleLinear()
+                .domain([0, 200000, 400000, 600000, 800000, 1000000, 1200000, 1400000, 1600000, 1800000]) // Adjust the domain to fit your data range
+                .range(["#00ff00", "#33ff33", "#66ff66", "#99ff99", "#ccffcc", "#ffff00", "#ffcc00", "#ff9900", "#ff6600", "#ff3300"]); // Define a wider range of colors for the gradient
+
+            // Use the color scale to get the color based on the value
+            return colorScale(value);
+        }
+
+        function RunSvg() {
+            let width = 1000, height = 450;
+
+            let svg = d3.select("#map-svg")
+                .attr("viewBox", "0 0 " + width + " " + height);
+
+            // Load external data and boot
+            Promise.all([d3.json("sgsubzone.geojson"), d3.csv("population2023.csv")]).then(data => {
+                let mapData = data[0].features;
+                let newData = data[1];
+
+                // console.log(newData);
+
+                // Merge provided data with map data
+                mapData.forEach(district => {
+                    let description = district.properties.Description;
+
+                    // Regular expression pattern to match the value inside <td> tags
+                    let pattern = /SUBZONE_N<\/th>\s*<td>(.*?)<\/td>/;
+
+                    // Match the pattern in the description string
+                    let matches = description.match(pattern);
+
+                    // Extract the value from the second match (index 1)
+                    let areaName = matches[1].replace(/<\/?td>/g, ''); // Remove <td> tags
+                    // console.log(areaName); // Output: BEDOK
+
+                    let found = newData.find(d => d.AREA === areaName);
+                    if (found) {
+                        district.properties.data = found;
+                    }
+                });
+
+                // Map and projection
+                let projection = d3.geoMercator()
+                    .fitSize([width, height], data[0]);
+
+                let geopath = d3.geoPath().projection(projection);
+
+                let tooltip = d3.select("body")
+                    .append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0);
+
+                let popup = d3.select("body")
+                    .append("div")
+                    .attr("class", "popup")
+                    .style("opacity", 0);
+
+                svg.append("g")
+                    .attr("id", "districts")
+                    .selectAll("path")
+                    .data(mapData)
+                    .enter()
+                    .append("path")
+                    .attr("d", geopath)
+                    .classed("leaflet-interactive", true)
+                    .attr("stroke", "#8e9faf")
+                    .attr("stroke-width", 0.8)
+                    .attr("fill", d =>
+                    
+                    {
+                    // Adjust coloring based on data
+                    if (d.properties.data) {
+                        // Example: color based on the value of 2 ROOM
+                        let value;
+
+                        if (check == 0) {
+                            value = d.properties.data["Population"];
+                            // Color scale for population data
+                            if (value < 1) {
+                                return "#ffffff"; // White
+                            } else if (value < 10000) {
+                                return "#e8eef6"; // Lightest blue
+                            } else if (value < 20000) {
+                                return "#d1dced";
+                            } else if (value < 30000) {
+                                return "#bbcbe4";
+                            } else if (value < 40000) {
+                                return "#a4b9db";
+                            } else if (value < 50000) {
+                                return "#8da8d2";
+                            } else if (value < 60000) {
+                                return "#7696ca";
+                            } else if (value < 70000) {
+                                return "#5f85c1";
+                            } else if (value < 80000) {
+                                return "#4873b8";
+                            } else if (value < 90000) {
+                                return "#3262af";
+                            } else if (value < 100000) {
+                                return "#1b50a6";
+                            } else if (value < 200000) {
+                                return "#043f9d";
+                            } else {
+                                return "white"; 
+                            }
+                        } 
+                    }
+
+                    }).on("mouseover", (event, d) => {
+
+                        let value;
+
+                        if (check == 0) {
+                            value = d.properties.data["Population"];
+                        }
+                        else if (check == 1) {
+                            value = d.properties.data["Density"];
+                        }
+
+
+                        // Show tooltip on mouseover
+                        d3.select(".tooltip")
+                            .text(d.properties.data.AREA + " : " + value)
+                            .style("position", "absolute")            
+                            .style("background", "orange")
+                            .style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY + 15) + "px")
+                            .style("z-index", "1000")
+                            .style("opacity", 1)
+                            .style("font-family", "Montserrat")
+                            .style("font-size", "12px"); // Ensure tooltip is visible
+
+                        // Reduce opacity of the hovered area
+                        d3.select(event.target)
+                            .attr("opacity", 0.5);
+                    })
+                    .on("mouseout", function (event, d) {
+                        // Hide tooltip on mouseout
+                        d3.select(".tooltip")
+                            .style("opacity", 0); // Hide tooltip
+                        // Restore opacity of the area
+                        d3.select(event.target)
+                            .attr("opacity", 1);
+                    });
+
+
+                    // Data untuk legenda
+
+                    if (check == 0) {
+                    let legendData = [
+                        { color: "#e8eef6", label: "< 100000 ppl" },          // Lightest blue
+                        { color: "#d1dced", label: "100001 - 200000 ppl" },
+                        { color: "#bbcbe4", label: "200001 - 300000 ppl" },
+                        { color: "#a4b9db", label: "300001 - 400000 ppl" },
+                        { color: "#8da8d2", label: "400001 - 500000 ppl" },
+                        { color: "#7696ca", label: "500001 - 600000 ppl" },
+                        { color: "#5f85c1", label: "600001 - 700000 ppl" },
+                        { color: "#4873b8", label: "700001 - 800000 ppl" },
+                        { color: "#3262af", label: "800001 - 900000 ppl" },
+                        { color: "#1b50a6", label: "900001 - 1000000 ppl" },
+                        { color: "#043f9d", label: "> 1000000 ppl" }         // Darkest blue
+                    ];
+
+                    let legendBox = svg.append("rect")
+                    .attr("class", "legend-box")
+                    .attr("x", 10)
+                    .attr("y", 10)
+                    .attr("width", 150)
+                    .attr("height", 260)
+                    .style("fill", "none")
+
+
+                    //
+                    let legend = svg.append("g")
+                        .attr("class", "legend")
+                        .attr("transform", "translate(20, 20)");
+
+                    //
+                    let legendItems = legend.selectAll("g")
+                        .data(legendData)
+                        .enter()
+                        .append("g")
+                        .attr("transform", (d, i) => "translate(0," + i * 20 + ")");
+
+                    legendItems.append("rect")
+                        .attr("width", 15)
+                        .attr("height", 15)
+                        .attr("fill", d => d.color);
+
+                    legendItems.append("text")
+                        .attr("x", 30)
+                        .attr("y", 10)
+                        .text(d => d.label)
+                        .style("fill", "white");
+
+                    
+
+                    }
+
+                    if (check == 1) {
+                    let legendData = [
+                    { color: "#fee5d9", label: "< 5000 ppl/km²" },          // Lightest red
+                    { color: "#fcbba1", label: "5001 - 10000 ppl/km²" },
+                    { color: "#fc9272", label: "10001 - 15000 ppl/km²" },
+                    { color: "#fb6a4a", label: "15001 - 20000 ppl/km²" },
+                    { color: "#ef3b2c", label: "20001 - 25000 ppl/km²" },
+                    { color: "#cb181d", label: "25001 - 30000 ppl/km²" },
+                    { color: "#a50f15", label: "30001 - 35000 ppl/km²" },
+                    { color: "#67000d", label: "35001 - 40000 ppl/km²" },
+                    { color: "#210202", label: "40001 - 45000 ppl/km²" },        // Darkest blue
+                    ];
+
+                    let legendBox = svg.append("rect")
+                    .attr("class", "legend-box")
+                    .attr("x", 10)
+                    .attr("y", 10)
+                    .attr("width", 150)
+                    .attr("height", 260)
+                    .style("fill", "white")
+
+
+                    //
+                    let legend = svg.append("g")
+                        .attr("class", "legend")
+                        .attr("transform", "translate(20, 20)");
+
+                    //
+                    let legendItems = legend.selectAll("g")
+                        .data(legendData)
+                        .enter()
+                        .append("g")
+                        .attr("transform", (d, i) => "translate(0," + i * 20 + ")");
+
+                    legendItems.append("rect")
+                        .attr("width", 15)
+                        .attr("height", 15)
+                        .attr("fill", d => d.color);
+
+                    legendItems.append("text")
+                        .attr("x", 30)
+                        .attr("y", 10)
+                        .text(d => d.color)
+                        .style("fill", "white");
+
+                    }
+            });
+
+
+        }
+
+    </script>
+<h3>Assignment 4 (Interactive Data Vizualitation)</h5>
+<p>Created by Yuching, Cheng</p>
+
+</body>
+
+</html>
